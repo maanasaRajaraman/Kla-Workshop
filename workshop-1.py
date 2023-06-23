@@ -27,7 +27,8 @@ def careArea(inputJFile):
     for i in dataList["care_areas"]:
         topLeft = (i["top_left"]["x"], i["top_left"]["y"])
         bottomRight = (i["bottom_right"]["x"], i["bottom_right"]["y"])
-        careAreas.append((topLeft, bottomRight))
+        careAreas.append(topLeft)
+        careAreas.append(bottomRight)
     
     return careAreas
 
@@ -43,13 +44,6 @@ def eclZone(inputJFile):
 
 def frameNumber(img):
     #to calculate freame index/number
-    '''fname=img.split("/")[-1]
-    print(fname)
-    frameNo=fname.split("_")
-    print(frameNo)
-    frameNo=frameNo[2]
-    return frameNo
-    '''
     frameName=os.path.splitext(img)[0]
     f=frameName.split('_')
     frameNo=f[-1]
@@ -61,21 +55,25 @@ def loadpng(imageFile):
     png=Image.open(imageFile)
     return png
     #IEO error if not able to open ?
-    
+
+
 def diePosition(dIndex, dW, dH, strW):
    #calculate die position
-    xStart= (dIndex % strW) * dW
-    yStart=(dIndex // strW) * dW
+    c=dIndex % (strW+1)
+    r=dIndex // (strW+1)
+    
+    xStart= c * dW
+    yStart= r * dH
     xEnd= xStart+dW
-    yEnd= yStart+dW
+    yEnd= yStart+dH
     
     diePos=[xStart, yStart, xEnd, yEnd]
     return diePos
 
 def areasInsideDie(careArea, exclZone, dIndex):
     #returns care area and exclusion zone inside particular die
-    caD=careArea[dIndex]
-    
+    cad1, cad2 =careArea
+    caD=(cad1, cad2)
     if dIndex in exclZone:
         exlZ=exclZone[dIndex]
     else:
@@ -83,18 +81,24 @@ def areasInsideDie(careArea, exclZone, dIndex):
     return caD, exlZ
 
 def insideArea(i, j, area):
-    topLeft, bottomRight = area
+    topLeft = area[0]
+    bottomRight=area[1]
+    
     x1, y1 = topLeft
     x2, y2 = bottomRight
     return x1 <= i <= x2 and y1 >= j >= y2
 
 def defectFound(image, i, j):
-    px=image.getpixel((i,j))
-    r,g,b=px
-    if r+g+b != 255+255+255:
-        return True
-    else:
+    width, height = image.size
+    if i < 0 or j < 0 or i >= width or j >= height:
         return False
+    px = image.getpixel((i, j))
+    r, g, b = px
+    maxi=r+g+b
+    check=600
+    
+    return maxi > check
+
 
 def detectionFunction(wafer, diePos, cArea, ecZ):
     #to find defect location
@@ -104,10 +108,8 @@ def detectionFunction(wafer, diePos, cArea, ecZ):
     for j in range(dp[1], dp[3]):
         for i in range(dp[0], dp[2]):
             if insideArea(i,j,cArea):
-                if ecZ!=None:
-                    if not insideArea(i, j, ecZ):
-                        if defectFound(wafer, i, j):
-                            foundDefect.append((i,j))
+                if defectFound(wafer, i, j):
+                    foundDefect.append((i,j))
     return foundDefect
 
 def defectPos(defect, pos):
@@ -115,21 +117,25 @@ def defectPos(defect, pos):
     return defectPos
 
 def anomalyDetection(inputf, imageList):
+    
     finalAnomaly=[]
     
     dWidth, dHeight, strWidhth, row, cln = detail(inputJson)
     careAreai = careArea(inputJson)
     exclusionZones = eclZone(inputJson)
-    print(dWidth, dHeight, strWidhth, row, cln)
-    print(careAreai)
+    careNew=[]
+    for i in careAreai:
+        careNew.append(i)
+        
     for i in imageList:
         frameNum=frameNumber(i)
         waferImg=loadpng(i)
         for die in range(row*cln):
             pos=diePosition(die, dWidth, dHeight, strWidhth)
-            ca, ez =areasInsideDie(careAreai, exclusionZones, die)
-            print(ca, ez)
+            
+            ca, ez = areasInsideDie(careNew, exclusionZones, die)
             defects=detectionFunction(waferImg, pos, ca, ez)
+            
             for d in defects:
                 dloc=defectPos(d, pos)
                 anomaly= [die, dloc[0], dloc[1]]
@@ -147,12 +153,6 @@ def anomalyFn(defects, csvFile):
 with open("input.json", "r") as file:
     inputJson = file.read()
 
-'''
-dWidth, dHeight, strWidhth = detail(inputJson)
-careArea = careArea(inputJson)
-exclusionZones = eclZone(inputJson)
-'''
-
 def load_images_from_folder(folder):
     images = []
     for filename in os.listdir(folder):
@@ -163,7 +163,6 @@ def load_images_from_folder(folder):
     return images
 
 imgPathList=load_images_from_folder("images")
-print(imgPathList)
 
 final=anomalyDetection("input.json", imgPathList)
 
